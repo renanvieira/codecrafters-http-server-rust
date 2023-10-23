@@ -3,9 +3,6 @@ use std::io::prelude::*;
 use std::io::{BufReader, Error, Write};
 use std::net::{TcpListener, TcpStream};
 
-
-
-
 fn main() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
@@ -35,28 +32,37 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Error> {
     let http_version = status_line[2];
 
     let request_headers = parse_headers(&http_request);
-    let path_split: Vec<&str> = path.split('/').collect();
-    let endpoint = path_split[1];
-    let content = path_split[2];
-    let mut response_headers :HashMap<&str, String> =  HashMap::new();
+    let path_split: Vec<String> = path.split('/').map(|s|s.to_string()).collect();
+
+    let endpoint = path_split[1].to_owned();
+    let empty_content = String::new();
+    let content = path_split.get(2).unwrap_or(&empty_content);
+    let mut response_headers: HashMap<&str, String> = HashMap::new();
 
     response_headers.insert("Content-Type", "text/plain".to_owned());
-    response_headers.insert("Content-Length", path_split[2].as_bytes().len().to_string());
+    response_headers.insert("Content-Length", content.as_bytes().len().to_string());
 
-    let response_line = "HTTP/1.1 200 OK\r\n";
-    let headers_line : Vec<String> = response_headers.iter().map(|(k, v)| format!("{}: {}", k,v)).collect();
+    let ok_response_line = "HTTP/1.1 200 OK\r\n";
+    let not_found_response_line = "HTTP/1.1 404 NotFound\r\n";
+    let headers_line: Vec<String> = response_headers
+        .iter()
+        .map(|(k, v)| format!("{}: {}", k, v))
+        .collect();
 
-    match endpoint {
+    match endpoint.as_ref() {
         "" => {
-            stream.write_all(response_line.as_bytes())?;
+            stream.write_all(ok_response_line.as_bytes())?;
+            stream.write_all("\r\n\r\n".as_bytes())?;
         }
         "echo" => {
-            stream.write_all(response_line.as_bytes())?;
+            stream.write_all(ok_response_line.as_bytes())?;
             stream.write_all(headers_line.join("\r\n").as_bytes())?;
-            stream.write_all("\r\n\r\n".as_bytes())?;
             stream.write(content.as_bytes())?;
         }
-        _ => (),
+        _ => {
+            stream.write_all(not_found_response_line.as_bytes())?;
+            stream.write_all("\r\n".as_bytes())?;
+        }
     };
 
     Ok(())
