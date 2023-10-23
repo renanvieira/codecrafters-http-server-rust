@@ -34,11 +34,17 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Error> {
     let path = status_line[1];
     let http_version = status_line[2];
 
-    let headers = parse_headers(&http_request);
+    let request_headers = parse_headers(&http_request);
     let path_split: Vec<&str> = path.split('/').collect();
     let endpoint = path_split[1];
+    let content = path_split[2];
+    let mut response_headers :HashMap<&str, String> =  HashMap::new();
 
-    let response_line = "HTTP/1.1 200 OK\r\n\r\n";
+    response_headers.insert("Content-Type", "text/plain".to_owned());
+    response_headers.insert("Content-Length", path_split[2].as_bytes().len().to_string());
+
+    let response_line = "HTTP/1.1 200 OK\r\n";
+    let headers_line : Vec<String> = response_headers.iter().map(|(k, v)| format!("{}: {}", k,v)).collect();
 
     match endpoint {
         "" => {
@@ -46,7 +52,9 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Error> {
         }
         "echo" => {
             stream.write_all(response_line.as_bytes())?;
-            stream.write_all(path_split[2].as_bytes())?;
+            stream.write_all(headers_line.join("\r\n").as_bytes())?;
+            stream.write_all("\r\n\r\n".as_bytes())?;
+            stream.write(content.as_bytes())?;
         }
         _ => (),
     };
