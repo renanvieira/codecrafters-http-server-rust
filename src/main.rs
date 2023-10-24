@@ -33,24 +33,16 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Error> {
 
     println!("Request: {} {}", method, path);
     let request_headers = parse_headers(&http_request);
-    let path_split: Vec<String> = path.splitn(3,'/').map(|s|s.to_string()).collect();
+    let path_split: Vec<String> = path.splitn(3, '/').map(|s| s.to_string()).collect();
 
     let endpoint = path_split[1].to_owned();
     let empty_content = String::new();
-    let content = path_split.get(2).unwrap_or(&empty_content);
-    let content_bytearray = content.as_bytes();
     let mut response_headers: HashMap<&str, String> = HashMap::new();
 
     response_headers.insert("Content-Type", "text/plain".to_owned());
-    response_headers.insert("Content-Length",content_bytearray.len().to_string());
-    
 
     let ok_response_line = "HTTP/1.1 200 OK\r\n";
     let not_found_response_line = "HTTP/1.1 404 NotFound\r\n";
-    let headers_line: Vec<String> = response_headers
-        .iter()
-        .map(|(k, v)| format!("{}: {}", k, v))
-        .collect();
 
     match endpoint.as_ref() {
         "" => {
@@ -60,10 +52,35 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Error> {
         }
         "echo" => {
             println!("Route Matched '/echo': {} - {:#?} - ", endpoint, path_split);
+
+            let content = path_split.get(2).unwrap_or(&empty_content);
+            let content_bytearray = content.as_bytes();
+
+            response_headers.insert("Content-Length", content_bytearray.len().to_string());
+
+            let headers = build_response_headers(response_headers);
+
             stream.write_all(ok_response_line.as_bytes())?;
-            stream.write_all(headers_line.join("\r\n").as_bytes())?;
+            stream.write_all(headers.join("\r\n").as_bytes())?;
             stream.write_all("\r\n\r\n".as_bytes())?;
             stream.write_all(content_bytearray)?;
+        }
+        "user-agent" => {
+            println!(
+                "Route Mateched '/user-agent': {} - {:#?} - {:#?}",
+                endpoint, path_split, request_headers,
+            );
+
+            let content = request_headers.get("User-Agent").unwrap();
+
+            response_headers.insert("Content-Length", content.as_bytes().len().to_string());
+
+            let headers = build_response_headers(response_headers);
+
+            stream.write_all(ok_response_line.as_bytes())?;
+            stream.write_all(headers.join("\r\n").as_bytes())?;
+            stream.write_all("\r\n\r\n".as_bytes())?;
+            stream.write_all(content.as_bytes())?;
         }
         _ => {
             println!("Not Matching Found {} - {:#?}", endpoint, path_split);
@@ -74,6 +91,13 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Error> {
     };
 
     Ok(())
+}
+
+fn build_response_headers(response_headers: HashMap<&str, String>) -> Vec<String> {
+    response_headers
+        .iter()
+        .map(|(k, v)| format!("{}: {}", k, v))
+        .collect()
 }
 
 fn parse_headers(http_request: &Vec<String>) -> HashMap<String, String> {
