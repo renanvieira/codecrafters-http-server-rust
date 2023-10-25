@@ -98,7 +98,9 @@ async fn handle_connection(stream: TcpStream) -> Result<(), anyhow::Error> {
 
     let response_bytes = build_response(&response)?;
 
-    write_response(&mut buf, &response_bytes).await?;
+
+    buf.write_all(&response_bytes).await?;
+    buf.flush().await?;
 
     Ok(())
 }
@@ -119,6 +121,7 @@ fn build_response(response: &Response) -> Result<Vec<u8>, anyhow::Error> {
         .iter()
         .map(|(k, v)| format!("{}: {}{}", k, v, CRLF))
         .collect();
+
 
     let mut buf: String = String::new();
 
