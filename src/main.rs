@@ -1,118 +1,131 @@
-use std::collections::HashMap;
-use std::io::prelude::*;
-use std::io::{BufReader, Error, Write};
-use std::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, BufStream, ReadHalf};
+use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 
-fn main() -> Result<(), Error> {
-    let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+use crate::http::{parse_path, parse_request};
+use crate::response::not_found;
+use crate::routes::{get_echo, get_index, get_user_agent};
 
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
+use self::common::CRLF;
+use self::response::Response;
 
-        println!("Connection Stablished!");
-        handle_connection(stream)?;
+pub mod common;
+pub mod http;
+pub mod request;
+pub mod response;
+pub mod routes;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let listener = TcpListener::bind("127.0.0.1:4221").await?;
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+        println!("Connection Established");
+
+        tokio::spawn(async move {
+            let conn_res = handle_connection(socket).await;
+
+            match conn_res {
+                Err(e) => {
+                    eprintln!("Failure: {:?}", e);
+                    return;
+                }
+                _ => {
+                    println!("Connection Closed.")
+                }
+            }
+        });
     }
-
-    Ok(())
 }
 
-fn handle_connection(mut stream: TcpStream) -> Result<(), Error> {
-    let buf_reader = BufReader::new(&mut stream);
+async fn read_request_from_socket(
+    reader: &mut BufStream<TcpStream>,
+) -> Result<Vec<String>, anyhow::Error> {
+    let mut http_request: Vec<String> = Vec::new();
 
-    let http_request: Vec<_> = buf_reader
-        .lines()
-        .map(|x| x.unwrap())
-        .take_while(|x| !x.is_empty())
-        .collect();
+    let mut http_request_lines: tokio::io::Lines<_> = reader.lines();
 
-    let status_line: Vec<&str> = http_request[0].split(' ').collect();
+    loop {
+        match http_request_lines.next_line().await? {
+            Some(ref empty_line) if empty_line.is_empty() => break,
+            Some(line) => {
+                println!("Reading Line: {}", line);
+                http_request.push(line)
+            }
+            None => break,
+        }
+    }
 
-    let method = status_line[0];
-    let path = status_line[1];
-    let http_version = status_line[2];
+    Ok(http_request)
+}
 
-    println!("Request: {} {}", method, path);
-    let request_headers = parse_headers(&http_request);
-    let path_split: Vec<String> = path.splitn(3, '/').map(|s| s.to_string()).collect();
+async fn handle_connection(stream: TcpStream) -> Result<(), anyhow::Error> {
+    let mut buf = BufStream::new(stream);
+    let http_request = read_request_from_socket(&mut buf).await?;
 
-    let endpoint = path_split[1].to_owned();
-    let empty_content = String::new();
-    let mut response_headers: HashMap<&str, String> = HashMap::new();
+    let request = parse_request(http_request);
 
-    response_headers.insert("Content-Type", "text/plain".to_owned());
+    println!("Request: {} {}", request.method, request.path);
+    let endpoint = parse_path(&request);
 
-    let ok_response_line = "HTTP/1.1 200 OK\r\n";
-    let not_found_response_line = "HTTP/1.1 404 NotFound\r\n";
-
-    match endpoint.as_ref() {
-        "" => {
-            println!("Route Matched '/': {} - {:#?}", endpoint, path_split);
-            stream.write_all(ok_response_line.as_bytes())?;
-            stream.write_all("\r\n\r\n".as_bytes())?;
+    let response = match endpoint.as_ref() {
+        "/" => {
+            println!("Route Matched '/': {} - {:#?}", endpoint, request.path);
+            get_index(&request)
         }
         "echo" => {
-            println!("Route Matched '/echo': {} - {:#?} - ", endpoint, path_split);
+            println!(
+                "Route Matched '/echo': {} - {:#?} - ",
+                endpoint, request.path
+            );
 
-            let content = path_split.get(2).unwrap_or(&empty_content);
-            let content_bytearray = content.as_bytes();
-
-            response_headers.insert("Content-Length", content_bytearray.len().to_string());
-
-            let headers = build_response_headers(response_headers);
-
-            stream.write_all(ok_response_line.as_bytes())?;
-            stream.write_all(headers.join("\r\n").as_bytes())?;
-            stream.write_all("\r\n\r\n".as_bytes())?;
-            stream.write_all(content_bytearray)?;
+            get_echo(&request)
         }
         "user-agent" => {
             println!(
-                "Route Mateched '/user-agent': {} - {:#?} - {:#?}",
-                endpoint, path_split, request_headers,
+                "Route Matched '/user-agent': {} - {:#?} - {:#?}",
+                endpoint, request.path, request.headers,
             );
 
-            let content = request_headers.get("User-Agent").unwrap();
-
-            response_headers.insert("Content-Length", content.as_bytes().len().to_string());
-
-            let headers = build_response_headers(response_headers);
-
-            stream.write_all(ok_response_line.as_bytes())?;
-            stream.write_all(headers.join("\r\n").as_bytes())?;
-            stream.write_all("\r\n\r\n".as_bytes())?;
-            stream.write_all(content.as_bytes())?;
+            get_user_agent(&request)
         }
         _ => {
-            println!("Not Matching Found {} - {:#?}", endpoint, path_split);
-
-            stream.write_all(not_found_response_line.as_bytes())?;
-            stream.write_all("\r\n".as_bytes())?;
+            println!("Not Matching Found {} - {:#?}", endpoint, request.path);
+            not_found()
         }
     };
+
+    let response_bytes = build_response(&response)?;
+
+    write_response(&mut buf, &response_bytes).await?;
 
     Ok(())
 }
 
-fn build_response_headers(response_headers: HashMap<&str, String>) -> Vec<String> {
-    response_headers
-        .iter()
-        .map(|(k, v)| format!("{}: {}", k, v))
-        .collect()
+async fn write_response(
+    buf: &mut BufStream<TcpStream>,
+    response_bytes: &[u8],
+) -> Result<(), anyhow::Error> {
+    buf.write_all(&response_bytes).await?;
+
+    Ok(())
 }
 
-fn parse_headers(http_request: &Vec<String>) -> HashMap<String, String> {
-    let splited_headers: Vec<Vec<String>> = http_request
+fn build_response(response: &Response) -> Result<Vec<u8>, anyhow::Error> {
+    let status_line = format!("{}{}", response.build_status_line(), CRLF);
+    let headers: String = response
+        .headers
         .iter()
-        .skip(1)
-        .map(|h| h.split(' ').collect())
-        .map(|h: String| h.splitn(2, ':').map(|s| s.to_string()).collect())
+        .map(|(k, v)| format!("{}: {}{}", k, v, CRLF))
         .collect();
 
-    splited_headers
-        .iter()
-        .map(|x| (x.get(0), x.get(1)))
-        .filter(|(x, y)| x.is_some() && y.is_some())
-        .map(|(x, y)| (x.unwrap(), y.unwrap()))
-        .map(|(x, y)| (x.to_owned(), y.to_owned()))
-        .collect()
+    let mut buf: String = String::new();
+
+    buf.push_str(&status_line);
+    buf.push_str(&headers);
+    buf.push_str(&format!("{}", CRLF.repeat(2)));
+    buf.push_str(&response.content);
+
+    Ok(buf.as_bytes().to_owned())
 }
