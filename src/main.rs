@@ -50,7 +50,6 @@ async fn read_request_from_socket(
         match http_request_lines.next_line().await? {
             Some(ref empty_line) if empty_line.is_empty() => break,
             Some(line) => {
-                println!("Reading Line: {}", line);
                 http_request.push(line)
             }
             None => break,
@@ -98,9 +97,7 @@ async fn handle_connection(stream: TcpStream) -> Result<(), anyhow::Error> {
 
     let response_bytes = build_response(&response)?;
 
-
-    buf.write_all(&response_bytes).await?;
-    buf.flush().await?;
+    write_response(&mut buf, &response_bytes).await?;
 
     Ok(())
 }
@@ -110,6 +107,7 @@ async fn write_response(
     response_bytes: &[u8],
 ) -> Result<(), anyhow::Error> {
     buf.write_all(&response_bytes).await?;
+    buf.flush().await?;
 
     Ok(())
 }
@@ -122,12 +120,11 @@ fn build_response(response: &Response) -> Result<Vec<u8>, anyhow::Error> {
         .map(|(k, v)| format!("{}: {}{}", k, v, CRLF))
         .collect();
 
-
     let mut buf: String = String::new();
 
     buf.push_str(&status_line);
     buf.push_str(&headers);
-    buf.push_str(&format!("{}", CRLF.repeat(2)));
+    buf.push_str(&CRLF);
     buf.push_str(&response.content);
 
     Ok(buf.as_bytes().to_owned())

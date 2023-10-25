@@ -93,8 +93,8 @@ impl ResponseBuilder {
     }
 
     pub fn build(mut self) -> Response {
-        let content_length_with_crlf = format!("{}{}", &self.content, CRLF);
-        let content_length = content_length_with_crlf.as_bytes().len();
+        // let content_with_crlf = format!("{}{}", &self.content, CRLF);
+        let content_length = self.content.as_bytes().len();
 
         let status_code = self
             .status_code
