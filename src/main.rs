@@ -4,10 +4,10 @@ use tokio::net::{TcpListener, TcpStream};
 
 use crate::http::{parse_path, parse_request};
 use crate::response::not_found;
-use crate::routes::{get_echo, get_index, get_user_agent};
+use crate::routes::{get_echo, get_index, get_user_agent, get_file};
 
 use self::common::CRLF;
-use self::response::Response;
+use self::response::{Response, ResponseBuilder};
 
 pub mod common;
 pub mod http;
@@ -49,9 +49,7 @@ async fn read_request_from_socket(
     loop {
         match http_request_lines.next_line().await? {
             Some(ref empty_line) if empty_line.is_empty() => break,
-            Some(line) => {
-                http_request.push(line)
-            }
+            Some(line) => http_request.push(line),
             None => break,
         }
     }
@@ -72,6 +70,14 @@ async fn handle_connection(stream: TcpStream) -> Result<(), anyhow::Error> {
         "/" => {
             println!("Route Matched '/': {} - {:#?}", endpoint, request.path);
             get_index(&request)
+        }
+        "files" => {
+            println!(
+                "Route Matched '/files': {} - {:#?} - ",
+                endpoint, request.path
+            );
+
+            get_file(&request)
         }
         "echo" => {
             println!(

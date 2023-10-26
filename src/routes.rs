@@ -1,8 +1,10 @@
-use crate::common::{EMPTY_CONTENT, StatusCode};
+use std::fs;
+use std::io::Empty;
+use std::path::Path;
+
+use crate::common::{StatusCode, EMPTY_CONTENT};
 use crate::request::Request;
-use crate::response::{ResponseBuilder, Response};
-
-
+use crate::response::{Response, ResponseBuilder};
 
 pub fn get_user_agent(request: &Request) -> Response {
     let content = request.headers.get("User-Agent");
@@ -42,5 +44,32 @@ pub fn get_index(request: &Request) -> Response {
         .build()
 }
 
+pub fn get_file(request: &Request) -> Response {
+    let directory = std::env::args().nth(2).expect("No Directory was given");
+    let file = request
+        .path
+        .splitn(3, '/')
+        .map(|s| s.to_owned())
+        .nth(2)
+        .expect("File is required");
 
+    let full_path = format!("{}/{}", directory.trim_end_matches('/'), file);
+    println!("Reading path: {}", full_path);
 
+    let path: &Path = Path::new(&full_path);
+
+    if path.exists() {
+        let file_content : Vec<u8> = fs::read(path).expect("File should be readable");
+        let file_content_str = String::from_utf8_lossy(&file_content).parse().expect("File to be UTF-8");
+
+        ResponseBuilder::new()
+            .content(file_content_str)
+            .status_code(StatusCode::OK)
+            .build()
+    } else {
+        ResponseBuilder::new()
+            .content(EMPTY_CONTENT.to_owned())
+            .status_code(StatusCode::NotFound)
+            .build()
+    }
+}
