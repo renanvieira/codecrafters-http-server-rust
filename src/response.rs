@@ -2,9 +2,8 @@ use std::collections::HashMap;
 
 use crate::common::{StatusCode, CRLF, EMPTY_CONTENT};
 
-
 pub struct Response {
-    pub content: String,
+    pub content: Vec<u8>,
     pub content_type: String,
     pub content_length: usize,
     pub status_code: StatusCode,
@@ -13,7 +12,7 @@ pub struct Response {
 
 impl Response {
     pub fn new(
-        content: String,
+        content: Vec<u8>,
         content_length: usize,
         status_code: StatusCode,
         content_type: String,
@@ -55,6 +54,7 @@ impl Response {
 pub struct ResponseBuilder {
     pub content: String,
     pub content_type: String,
+    pub file: Option<Vec<u8>>,
     pub status_code: Option<StatusCode>,
     pub headers: HashMap<String, String>,
 }
@@ -66,11 +66,18 @@ impl ResponseBuilder {
             content_type: "text/plain".to_owned(),
             status_code: None,
             headers: HashMap::new(),
+            file: None,
         }
     }
 
     pub fn content(mut self, content: String) -> ResponseBuilder {
         self.content = content;
+
+        self
+    }
+
+    pub fn file(mut self, file: Vec<u8>) -> ResponseBuilder {
+        self.file = Some(file);
 
         self
     }
@@ -93,21 +100,31 @@ impl ResponseBuilder {
     }
 
     pub fn build(mut self) -> Response {
-        // let content_with_crlf = format!("{}{}", &self.content, CRLF);
-        let content_length = self.content.as_bytes().len();
+        let mut content_length: usize;
+        let mut content_type: String;
+        let mut content: Vec<u8>;
+
+        if let Some(file) = self.file {
+            content_length = file.len();
+            content_type = "application/octet-stream".to_owned();
+            content = file;
+        } else {
+            content_length = self.content.as_bytes().len();
+            content_type = self.content_type.clone();
+            content = self.content.as_bytes().to_owned();
+        }
 
         let status_code = self
             .status_code
             .clone()
             .expect("Status Code must be present");
-        let content_type = self.content_type.clone();
 
         self.headers
             .insert("Content-Length".to_owned(), content_length.to_string());
         self.headers.insert("Content-Type".to_owned(), content_type);
 
         Response::new(
-            self.content,
+            content,
             content_length,
             status_code,
             self.content_type,
@@ -115,7 +132,6 @@ impl ResponseBuilder {
         )
     }
 }
-
 
 pub fn not_found() -> Response {
     ResponseBuilder::new()

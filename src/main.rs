@@ -126,12 +126,15 @@ fn build_response(response: &Response) -> Result<Vec<u8>, anyhow::Error> {
         .map(|(k, v)| format!("{}: {}{}", k, v, CRLF))
         .collect();
 
+    let content_str = format!("{:?}", response.content);
     let mut buf: String = String::new();
 
     buf.push_str(&status_line);
     buf.push_str(&headers);
     buf.push_str(&CRLF);
-    buf.push_str(&response.content);
 
-    Ok(buf.as_bytes().to_owned())
+    let mut byte_buf = buf.as_bytes().to_owned();
+    byte_buf.extend(response.content.clone());
+
+    Ok(byte_buf.to_owned())
 }

@@ -59,11 +59,10 @@ pub fn get_file(request: &Request) -> Response {
     let path: &Path = Path::new(&full_path);
 
     if path.exists() {
-        let file_content : Vec<u8> = fs::read(path).expect("File should be readable");
-        let file_content_str = String::from_utf8_lossy(&file_content).parse().expect("File to be UTF-8");
+        let file_content: Vec<u8> = fs::read(path).expect("File should be readable");
 
         ResponseBuilder::new()
-            .content(file_content_str)
+            .file(file_content)
             .status_code(StatusCode::OK)
             .build()
     } else {
