@@ -11,6 +11,8 @@ use crate::response::{Response, ResponseBuilder};
 pub fn get_user_agent(request: &Request) -> Response {
     let content = request.headers.get("User-Agent");
 
+    println!("Content: {:#?}", content);
+
     let response_builder = match content {
         Some(user_agent) => ResponseBuilder::new()
             .content(user_agent.to_owned())

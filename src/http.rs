@@ -11,25 +11,24 @@ pub fn parse_request(headers: Vec<String>, body: Vec<u8>) -> Request {
     let req_path = status_line[1];
     let http_version = status_line[2];
 
-    let endpoint: &str;
-    let path: Option<&str>;
+    let split_index = req_path.match_indices("/").map(|(idx, _)| idx).nth(1);
+    let path: Option<String>;
+    let endpoint: String;
 
-    let (endpoint, path) = req_path
-        .match_indices("/")
-        .nth(1)
-        .map(|(index, _)| {
-            let (e, p) = req_path.split_at(index);
-            (e, Some(p))
-        })
-        .unwrap_or_else(|| ("/", None));
+    if let Some(idx) = split_index {
+        let split: (_, _) = req_path.split_at(idx);
+
+        endpoint = split.0.to_string();
+        path = Some(split.1.to_string());
+    } else {
+        endpoint = req_path.to_string();
+        path = None;
+    }
 
     let request_headers = parse_headers(&headers);
-
-    println!("{:#?}", headers);
-
     Request::new(
         HTTPMethod::from_str(&method).unwrap(),
-        path.map(str::to_string),
+        path,
         endpoint.to_owned(),
         http_version.to_owned(),
         request_headers,
