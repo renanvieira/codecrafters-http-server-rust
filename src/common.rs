@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 pub const CRLF: &str = "\r\n";
 pub const EMPTY_CONTENT: &str = "";
+pub const TCP_BUFFER_SIZE: usize = 4096;
 
 #[derive(Clone)]
 pub enum StatusCode {

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::request::Request;
-
-
+use crate::router::HTTPMethod;
 
 pub fn parse_path(request: &Request) -> String {
     let path_split: Vec<String> = request.path.splitn(3, '/').map(|s| s.to_string()).collect();
@@ -13,20 +13,30 @@ pub fn parse_path(request: &Request) -> String {
     }
 }
 
-pub fn parse_request(raw_request: Vec<String>) -> Request {
-    let status_line: Vec<&str> = raw_request[0].split(' ').collect();
+pub fn parse_request(headers: Vec<String>, body: Vec<u8>) -> Request {
+    let status_line: Vec<&str> =headers[0].split(' ').collect();
 
     let method = status_line[0];
     let path = status_line[1];
     let http_version = status_line[2];
 
-    let request_headers = parse_headers(&raw_request);
+    let (endpoint, path) = path
+        .match_indices("/")
+        .nth(1)
+        .map(|(index, _)| path.split_at(index))
+        .unwrap();
+
+    let request_headers = parse_headers(&headers);
+
+    println!("{:#?}", headers);
 
     Request::new(
-        method.to_owned(),
+        HTTPMethod::from_str(&method).unwrap(),
         path.to_owned(),
+        endpoint.to_owned(),
         http_version.to_owned(),
         request_headers,
+        Some(body),
     )
 }
 

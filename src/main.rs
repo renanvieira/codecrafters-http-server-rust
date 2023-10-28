@@ -1,18 +1,20 @@
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, BufStream, ReadHalf};
-use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, BufStream};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::http::{parse_path, parse_request};
+use crate::http::parse_request;
 use crate::response::not_found;
-use crate::routes::{get_echo, get_index, get_user_agent, get_file};
+use crate::router::{get, post, Router};
+use crate::routes::{get_echo, get_file, get_index, get_user_agent, post_file};
 
-use self::common::CRLF;
-use self::response::{Response, ResponseBuilder};
+use self::common::{CRLF, TCP_BUFFER_SIZE};
+use self::response::Response;
 
 pub mod common;
 pub mod http;
 pub mod request;
 pub mod response;
+pub mod router;
 pub mod routes;
 
 #[tokio::main]
@@ -39,70 +41,71 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-async fn read_request_from_socket(
+async fn read_data_from_socket(
     reader: &mut BufStream<TcpStream>,
-) -> Result<Vec<String>, anyhow::Error> {
-    let mut http_request: Vec<String> = Vec::new();
+) -> Result<(Vec<String>, Vec<u8>), anyhow::Error> {
+    let mut body: Vec<u8> = Vec::new();
+    let mut http_headers: Vec<String> = Vec::new();
 
-    let mut http_request_lines: tokio::io::Lines<_> = reader.lines();
+    let mut content: Vec<u8> = Vec::new();
+    let mut buf: [u8; TCP_BUFFER_SIZE] = [0; TCP_BUFFER_SIZE];
 
     loop {
-        match http_request_lines.next_line().await? {
-            Some(ref empty_line) if empty_line.is_empty() => break,
-            Some(line) => http_request.push(line),
-            None => break,
+        let bytes_read = reader.read(&mut buf).await?;
+
+        content.extend(&buf[..bytes_read]);
+
+        if bytes_read < TCP_BUFFER_SIZE {
+            break;
         }
     }
 
-    Ok(http_request)
+    let delimiter = b"\r\n\r\n";
+
+    if let Some(index) = content
+        .windows(delimiter.len())
+        .position(|w| w == delimiter)
+    {
+        let header_end = index + delimiter.len();
+
+        let decoded_headers: Vec<String> = String::from_utf8_lossy(&content[..header_end])
+            .to_owned()
+            .split("\r\n")
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned())
+            .collect();
+
+        http_headers.extend(decoded_headers);
+        body.extend(&content[header_end..]);
+    }
+
+    Ok((http_headers, body))
 }
 
 async fn handle_connection(stream: TcpStream) -> Result<(), anyhow::Error> {
     let mut buf = BufStream::new(stream);
-    let http_request = read_request_from_socket(&mut buf).await?;
+    let (headers, body) = read_data_from_socket(&mut buf).await?;
 
-    let request = parse_request(http_request);
+    let request = parse_request(headers, body);
 
     println!("Request: {} {}", request.method, request.path);
-    let endpoint = parse_path(&request);
 
-    let response = match endpoint.as_ref() {
-        "/" => {
-            println!("Route Matched '/': {} - {:#?}", endpoint, request.path);
-            get_index(&request)
-        }
-        "files" => {
-            println!(
-                "Route Matched '/files': {} - {:#?} - ",
-                endpoint, request.path
-            );
+    let router = Router::new()
+        .route(get("/", get_index))
+        .route(get("/files", get_file))
+        .route(post("/files", post_file))
+        .route(get("/echo", get_echo))
+        .route(get("/user_agent", get_user_agent));
 
-            get_file(&request)
-        }
-        "echo" => {
-            println!(
-                "Route Matched '/echo': {} - {:#?} - ",
-                endpoint, request.path
-            );
+    let response: Response;
 
-            get_echo(&request)
-        }
-        "user-agent" => {
-            println!(
-                "Route Matched '/user-agent': {} - {:#?} - {:#?}",
-                endpoint, request.path, request.headers,
-            );
-
-            get_user_agent(&request)
-        }
-        _ => {
-            println!("Not Matching Found {} - {:#?}", endpoint, request.path);
-            not_found()
-        }
-    };
+    if let Some(route_fn) = router.find(&request) {
+        response = route_fn(&request);
+    } else {
+        response = not_found();
+    }
 
     let response_bytes = build_response(&response)?;
-
     write_response(&mut buf, &response_bytes).await?;
 
     Ok(())
@@ -126,7 +129,6 @@ fn build_response(response: &Response) -> Result<Vec<u8>, anyhow::Error> {
         .map(|(k, v)| format!("{}: {}{}", k, v, CRLF))
         .collect();
 
-    let content_str = format!("{:?}", response.content);
     let mut buf: String = String::new();
 
     buf.push_str(&status_line);

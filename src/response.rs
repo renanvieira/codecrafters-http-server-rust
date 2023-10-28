@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::common::{StatusCode, CRLF, EMPTY_CONTENT};
+use crate::common::{StatusCode, EMPTY_CONTENT};
 
 pub struct Response {
     pub content: Vec<u8>,
@@ -100,9 +100,9 @@ impl ResponseBuilder {
     }
 
     pub fn build(mut self) -> Response {
-        let mut content_length: usize;
-        let mut content_type: String;
-        let mut content: Vec<u8>;
+        let content_length: usize;
+        let content_type: String;
+        let content: Vec<u8>;
 
         if let Some(file) = self.file {
             content_length = file.len();
