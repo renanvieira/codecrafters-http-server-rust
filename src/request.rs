@@ -4,7 +4,7 @@ use crate::router::HTTPMethod;
 
 pub struct Request {
     pub method: HTTPMethod,
-    pub path: String,
+    pub path: Option<String>,
     pub endpoint: String,
     pub http_version: String,
     pub headers: HashMap<String, String>,
@@ -14,7 +14,7 @@ pub struct Request {
 impl Request {
     pub fn new(
         method: HTTPMethod,
-        path: String,
+        path: Option<String>,
         endpoint: String,
         http_version: String,
         headers: HashMap<String, String>,

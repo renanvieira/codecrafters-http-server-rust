@@ -24,7 +24,7 @@ pub fn get_user_agent(request: &Request) -> Response {
 }
 
 pub fn get_echo(request: &Request) -> Response {
-    let parsed_path: Vec<&str> = request.path.split("/echo").collect();
+    let parsed_path: Vec<&str> = request.path.as_ref().unwrap().split("/echo").collect();
 
     let path_param = parsed_path[1];
 
@@ -49,7 +49,7 @@ pub fn get_index(_request: &Request) -> Response {
 pub fn get_file(request: &Request) -> Response {
     let directory = std::env::args().nth(2).expect("No Directory was given");
 
-    let full_path = format!("{}{}", directory.trim_end_matches('/'), request.path);
+    let full_path = format!("{}{}", directory.trim_end_matches('/'), request.path.as_ref().unwrap());
     println!("Reading path: {}", full_path);
 
     let path: &Path = Path::new(&full_path);
@@ -71,7 +71,7 @@ pub fn get_file(request: &Request) -> Response {
 
 pub fn post_file(request: &Request) -> Response {
     let directory = std::env::args().nth(2).expect("No Directory was given");
-    let file_path = &format!("{}{}", directory.trim_end_matches('/'), request.path);
+    let file_path = &format!("{}{}", directory.trim_end_matches('/'), request.path.as_ref().unwrap());
     let full_path = Path::new(file_path);
 
     let mut open_options = OpenOptions::new()

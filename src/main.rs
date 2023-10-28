@@ -88,7 +88,7 @@ async fn handle_connection(stream: TcpStream) -> Result<(), anyhow::Error> {
 
     let request = parse_request(headers, body);
 
-    println!("Request: {} {}", request.method, request.path);
+    println!("Request: {} {}", request.method, request.path.as_ref().unwrap_or(&String::new()));
 
     let router = Router::new()
         .route(get("/", get_index))

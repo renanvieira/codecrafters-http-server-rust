@@ -4,27 +4,24 @@ use std::str::FromStr;
 use crate::request::Request;
 use crate::router::HTTPMethod;
 
-pub fn parse_path(request: &Request) -> String {
-    let path_split: Vec<String> = request.path.splitn(3, '/').map(|s| s.to_string()).collect();
-
-    match path_split[1].as_ref() {
-        "" => "/".to_string(),
-        _ => path_split[1].to_string(),
-    }
-}
-
 pub fn parse_request(headers: Vec<String>, body: Vec<u8>) -> Request {
-    let status_line: Vec<&str> =headers[0].split(' ').collect();
+    let status_line: Vec<&str> = headers[0].split(' ').collect();
 
     let method = status_line[0];
-    let path = status_line[1];
+    let req_path = status_line[1];
     let http_version = status_line[2];
 
-    let (endpoint, path) = path
+    let endpoint: &str;
+    let path: Option<&str>;
+
+    let (endpoint, path) = req_path
         .match_indices("/")
         .nth(1)
-        .map(|(index, _)| path.split_at(index))
-        .unwrap();
+        .map(|(index, _)| {
+            let (e, p) = req_path.split_at(index);
+            (e, Some(p))
+        })
+        .unwrap_or_else(|| ("/", None));
 
     let request_headers = parse_headers(&headers);
 
@@ -32,7 +29,7 @@ pub fn parse_request(headers: Vec<String>, body: Vec<u8>) -> Request {
 
     Request::new(
         HTTPMethod::from_str(&method).unwrap(),
-        path.to_owned(),
+        path.map(str::to_string),
         endpoint.to_owned(),
         http_version.to_owned(),
         request_headers,
