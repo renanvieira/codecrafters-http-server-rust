@@ -98,7 +98,7 @@ pub fn post_file(request: &Request) -> Response {
                 }
             }
 
-            resp_status_code = StatusCode::OK;
+            resp_status_code = StatusCode::Created;
         }
         Err(e) => {
             println!("Error: {}", e);
