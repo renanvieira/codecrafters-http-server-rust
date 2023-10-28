@@ -24,13 +24,10 @@ pub fn get_user_agent(request: &Request) -> Response {
 }
 
 pub fn get_echo(request: &Request) -> Response {
-    let parsed_path: Vec<&str> = request.path.as_ref().unwrap().split("/echo").collect();
 
-    let path_param = parsed_path[1];
-
-    let content = match path_param {
-        "" | "/" => EMPTY_CONTENT,
-        _ => path_param.trim_start_matches('/'),
+    let content = match request.path.as_ref() {
+        None => EMPTY_CONTENT,
+        Some(p) => p.trim_start_matches('/'),
     };
 
     ResponseBuilder::new()
@@ -49,7 +46,11 @@ pub fn get_index(_request: &Request) -> Response {
 pub fn get_file(request: &Request) -> Response {
     let directory = std::env::args().nth(2).expect("No Directory was given");
 
-    let full_path = format!("{}{}", directory.trim_end_matches('/'), request.path.as_ref().unwrap());
+    let full_path = format!(
+        "{}{}",
+        directory.trim_end_matches('/'),
+        request.path.as_ref().unwrap()
+    );
     println!("Reading path: {}", full_path);
 
     let path: &Path = Path::new(&full_path);
@@ -71,7 +72,11 @@ pub fn get_file(request: &Request) -> Response {
 
 pub fn post_file(request: &Request) -> Response {
     let directory = std::env::args().nth(2).expect("No Directory was given");
-    let file_path = &format!("{}{}", directory.trim_end_matches('/'), request.path.as_ref().unwrap());
+    let file_path = &format!(
+        "{}{}",
+        directory.trim_end_matches('/'),
+        request.path.as_ref().unwrap()
+    );
     let full_path = Path::new(file_path);
 
     let mut open_options = OpenOptions::new()
@@ -85,7 +90,7 @@ pub fn post_file(request: &Request) -> Response {
     match open_options.as_mut() {
         Ok(file) => {
             if let Some(body) = &request.payload {
-                match file.write_all(body){
+                match file.write_all(body) {
                     Err(_) => panic!("Failed to read file {}", file_path),
                     _ => println!("Wrote to {:?}", full_path),
                 }
