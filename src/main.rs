@@ -95,7 +95,7 @@ async fn handle_connection(stream: TcpStream) -> Result<(), anyhow::Error> {
         .route(get("/files", get_file))
         .route(post("/files", post_file))
         .route(get("/echo", get_echo))
-        .route(get("/user_agent", get_user_agent));
+        .route(get("/user-agent", get_user_agent));
 
     let response: Response;
 
